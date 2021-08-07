@@ -26,6 +26,9 @@ vector<vector<ll>> D;
 vector<vector<ll>> CE;
 vector<vector<ll>> RE;
 
+/// edge idx to vers
+vector<vector<ll>> E2V;
+
 /// vertices
 vector<Pos> vers;
 
@@ -120,6 +123,20 @@ void allocate_vers(){
     }
 }
 
+/// E2V 配列を作成
+void make_e2v(){
+    E2V.resize(vers.size());
+    for(size_t v = 0; v < vers.size(); v++){
+        auto [y, x] = vers[v];
+        auto re = RE[y][x];
+        auto ce = CE[y][x];
+        if(re != -1)
+            E2V[re].push_back(v);
+        if(ce != -1)
+            E2V[ce].push_back(v);
+    }
+}
+
 void dijkstra(ll y, ll x, vector<vector<ll>>& dist){
     dist[y][x] = 0;
     using T = tuple<ll, ll, ll>;
@@ -209,6 +226,34 @@ string naive_path(){
     return path;
 }
 
+//// 通るひつようのない頂点を消しながら移動
+string naive_path_delete(){
+    int sz = vers.size();
+    string path;
+
+    vector<ll> rem_edges(sz, 2);
+    int v = 0;
+    for(int nv = 1; nv < sz; nv++){
+        if(rem_edges[nv] == 0) continue;
+        path += VP[v][nv];
+
+        auto [ny, nx] = vers[nv];
+        for(auto& vv : E2V[RE[ny][nx]]){
+            rem_edges[vv]--;
+        }
+        for(auto& vv : E2V[CE[ny][nx]]){
+            rem_edges[vv]--;
+        }
+
+        E2V[RE[ny][nx]].clear();
+        E2V[CE[ny][nx]].clear();
+
+        v = nv;
+    }
+    path += VP[v][0];
+    return path;
+}
+
 int main(){
     cin >> N >> si >> sj;
     REP(i,N){
@@ -220,10 +265,11 @@ int main(){
     make_distance();
     allocate_edges();
     allocate_vers();
+    make_e2v();
     //printf("Ver: %d\n", vers.size());
     calc_vers_dist();
 
-    string answer = naive_path();
+    string answer = naive_path_delete();
 
     cout << answer << endl;
     return 0;

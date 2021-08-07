@@ -4,7 +4,7 @@ OUTPUT = answer
 
 TESTER = ./test.sh
 VIS = tools/target/release/vis
-TEST_IN = tools/in/0000.txt
+TEST_IN = tools/in/0085.txt
 
 TEST_OUT = result.txt
 
