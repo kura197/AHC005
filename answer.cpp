@@ -14,6 +14,10 @@ template<class T>bool chmin(T &a, const T &b) { if (b<a) { a=b; return 1; } retu
 const ll MOD = 1e9+7;
 const ll INF = 1e15;
 
+const int SEED = 1000;
+
+const double TIME = 2.85;
+
 int N, si, sj;
 vector<string> C;
 
@@ -37,6 +41,8 @@ vector<vector<ll>> VD;
 
 /// path between vertices
 vector<vector<string>> VP;
+
+mt19937 engine;
 
 void make_distance(){
     D.resize(N);
@@ -254,22 +260,155 @@ string naive_path_delete(){
     return path;
 }
 
+/// indicesにしたがって移動
+string traverse(vector<ll>& indices){
+    int sz = vers.size();
+    string path;
+
+    vector<ll> rem_edges(sz, 3);
+    int v = 0;
+    auto local_E2V = E2V;
+    for(int i = 0; i < sz-1; i++){
+        int nv = indices[i];
+        if(rem_edges[nv] == 0) continue;
+        auto nex_path = VP[v][nv];
+            
+        auto [y, x] = vers[v];
+        for(auto& c : nex_path){                
+            if(RE[y][x] != -1){
+                for(auto& vv : local_E2V[RE[y][x]]){
+                    rem_edges[vv] &= 0b01;
+                }
+                local_E2V[RE[y][x]].clear();
+            }
+            if(CE[y][x] != -1){
+                for(auto& vv : local_E2V[CE[y][x]]){
+                    rem_edges[vv] &= 0b10;
+                }
+                local_E2V[CE[y][x]].clear();
+            }
+
+            if(c == 'U') y--;
+            else if(c == 'D') y++;
+            else if(c == 'R') x++;
+            else if(c == 'L') x--;
+        }
+
+        auto [ny, nx] = vers[nv];
+        assert(ny == y);
+        assert(nx == x);
+
+        v = nv;
+        path += nex_path;
+    }
+    path += VP[v][0];
+    return path;
+}
+
+/// xor128
+unsigned int randxor()
+{
+    static unsigned int x=123456789, y=362436069, z=521288629, w=88675123;
+    unsigned int t;
+    t = (x^(x<<11));
+    x = y;
+    y = z;
+    z = w; 
+    return( w=(w^(w>>19))^(t^(t>>8)) );
+}
+
+//// heuristic 2-opt, ...
+string heuristic_path_delete(const double time, const double start, const int iteration, const double startTemp, const double endTemp){
+    int sz = vers.size();
+
+    /// 205026
+    //const int iteration = 1000;
+    /// 202522
+    //const int iteration = 10000;
+    //const double startTemp = 100;
+    //const double endTemp = 10;
+    const int R = 10000;
+    const int T = iteration;
+    int t = 0;
+
+    vector<ll> indices(sz-1);
+    REP(i,sz-1) indices[i] = i+1;
+    //reverse(indices.begin(), indices.end());
+    //swap(indices[48], indices[154]);
+    string ret = traverse(indices);
+    //cout << ret.size() << endl;
+    while(1){
+        if((double)(clock() - start) / CLOCKS_PER_SEC > time)
+            break;
+
+        //// 2-opt
+        static uniform_int_distribution<> rand(0, sz-2);
+        static uniform_int_distribution<> rand2(1, 5);
+        const int CNT = rand2(engine);
+        vector<int> idx0(CNT, -1), idx1(CNT, -1);
+        for(int i = 0; i < CNT; i++){
+            while(idx0[i] == idx1[i]){
+                idx0[i] = rand(engine);
+                idx1[i] = rand(engine);
+            }
+            swap(indices[idx0[i]], indices[idx1[i]]);
+        }
+
+        string path = traverse(indices);
+
+        double temp = startTemp + (endTemp - startTemp) * t / T;
+        double probability = exp((ret.size() - path.size()) / temp);
+        bool force_next = probability > (double)(randxor() % R) / R;
+        t++;
+
+        //cout << path.size() << endl;
+        //if(ret.size() > path.size()){
+        if(ret.size() > path.size() || force_next){
+            ret = path;
+        } else {
+            for(int i = CNT-1; i >= 0; i--){
+                swap(indices[idx0[i]], indices[idx1[i]]);
+            }
+        }
+        //break;
+    }
+    //printf("%d\n", t);
+    return ret;
+}
+
 int main(){
+    double start = clock();
     cin >> N >> si >> sj;
     REP(i,N){
         string s;
         cin >> s;
         C.push_back(s);
     }
+    engine = mt19937(SEED);
 
     make_distance();
     allocate_edges();
     allocate_vers();
     make_e2v();
-    //printf("Ver: %d\n", vers.size());
     calc_vers_dist();
 
-    string answer = naive_path_delete();
+    /// 205026
+    //const int iteration = 1000;
+    /// 202522
+
+    const int iteration = 10000;
+    const double startTemp = 100;
+    const double endTemp = 10;
+    string answer = heuristic_path_delete(TIME/2, start, iteration, startTemp, endTemp);
+
+    {
+        const int iteration = 1000;
+        const double startTemp = 10;
+        const double endTemp = 1;
+        string tmp = heuristic_path_delete(TIME, start, iteration, startTemp, endTemp);
+        if(answer.size() > tmp.size())
+            answer = tmp;
+    }
 
     cout << answer << endl;
     return 0;
