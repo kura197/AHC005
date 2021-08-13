@@ -1,6 +1,7 @@
 #include <bits/stdc++.h>
 
 using namespace std;
+using namespace chrono;
 
 typedef long long ll;
 typedef unsigned long long ull;
@@ -13,10 +14,12 @@ template<class T>bool chmax(T &a, const T &b) { if (a<b) { a=b; return 1; } retu
 template<class T>bool chmin(T &a, const T &b) { if (b<a) { a=b; return 1; } return 0; }
 const ll MOD = 1e9+7;
 const ll INF = 1e15;
+const double EPS = 1e-10;
 
 const int SEED = 1000;
 
 const double TIME = 2.85;
+//const double TIME = 20;
 
 int N, si, sj;
 vector<string> C;
@@ -294,9 +297,9 @@ string traverse(vector<ll>& indices){
             else if(c == 'L') x--;
         }
 
-        auto [ny, nx] = vers[nv];
-        assert(ny == y);
-        assert(nx == x);
+        //auto [ny, nx] = vers[nv];
+        //assert(ny == y);
+        //assert(nx == x);
 
         v = nv;
         path += nex_path;
@@ -317,67 +320,86 @@ unsigned int randxor()
     return( w=(w^(w>>19))^(t^(t>>8)) );
 }
 
-//// heuristic 2-opt, ...
-string heuristic_path_delete(const double time, const double start, const int iteration, const double startTemp, const double endTemp){
-    int sz = vers.size();
+/// return [0,1)
+double rand01(){
+    return (randxor() + 0.5) * (1.0 / UINT_MAX);
+}
 
-    /// 205026
-    //const int iteration = 1000;
-    /// 202522
-    //const int iteration = 10000;
-    //const double startTemp = 100;
-    //const double endTemp = 10;
-    const int R = 10000;
-    const int T = iteration;
-    int t = 0;
+//// heuristic 2-opt, ...
+string heuristic_path_delete(const double endTime, const auto startTime, const double startTemp, const double endTemp){
+    int sz = vers.size();
 
     vector<ll> indices(sz-1);
     REP(i,sz-1) indices[i] = i+1;
-    //reverse(indices.begin(), indices.end());
-    //swap(indices[48], indices[154]);
     string ret = traverse(indices);
-    //cout << ret.size() << endl;
+    ll cnt = 0;
     while(1){
-        if((double)(clock() - start) / CLOCKS_PER_SEC > time)
+        cnt++;
+        const double time = duration_cast<microseconds>(system_clock::now() - startTime).count() * 1e-6;
+        if(time > endTime)
             break;
 
-        //// 2-opt
-        static uniform_int_distribution<> rand(0, sz-2);
-        static uniform_int_distribution<> rand2(1, 5);
-        const int CNT = rand2(engine);
-        vector<int> idx0(CNT, -1), idx1(CNT, -1);
-        for(int i = 0; i < CNT; i++){
-            while(idx0[i] == idx1[i]){
-                idx0[i] = rand(engine);
-                idx1[i] = rand(engine);
+        if(rand01() < 0.05){
+            reverse(indices.begin(), indices.end());
+            string path = traverse(indices);
+
+            const double progressRatio = time / endTime;
+            const double temp = startTemp + (endTemp - startTemp) * progressRatio;
+            const double deltaScore = (int)ret.size() - (int)path.size() + EPS;
+            const double probability = exp(deltaScore / temp);
+            const bool force_next = probability > (double)(randxor() % 100000) / 100000;
+            if(ret.size() > path.size() || force_next){
+                ret = path;
+            } else {
+                reverse(indices.begin(), indices.end());
             }
-            swap(indices[idx0[i]], indices[idx1[i]]);
-        }
-
-        string path = traverse(indices);
-
-        double temp = startTemp + (endTemp - startTemp) * t / T;
-        double probability = exp((ret.size() - path.size()) / temp);
-        bool force_next = probability > (double)(randxor() % R) / R;
-        t++;
-
-        //cout << path.size() << endl;
-        //if(ret.size() > path.size()){
-        if(ret.size() > path.size() || force_next){
-            ret = path;
         } else {
-            for(int i = CNT-1; i >= 0; i--){
+            //// 2-opt
+            static uniform_int_distribution<> rand(0, sz-2);
+            static uniform_int_distribution<> rand2(1, 5);
+            const int CNT = rand2(engine);
+            //const int CNT = 1;
+            vector<int> idx0(CNT, -1), idx1(CNT, -1);
+            for(int i = 0; i < CNT; i++){
+                while(idx0[i] == idx1[i]){
+                    idx0[i] = rand(engine);
+                    idx1[i] = rand(engine);
+                }
                 swap(indices[idx0[i]], indices[idx1[i]]);
             }
+
+            string path = traverse(indices);
+
+            const double progressRatio = time / endTime;
+            const double temp = startTemp + (endTemp - startTemp) * progressRatio;
+            const double deltaScore = (int)ret.size() - (int)path.size() + EPS;
+            const double probability = exp(deltaScore / temp);
+            const bool force_next = probability > (double)(randxor() % 100000) / 100000;
+            ///fprintf(stdout, "%.2f, %.2f, %.2f: %.3f, %.3f, %.3f\n", time, endTime, progressRatio, deltaScore, temp, probability);
+            //fprintf(stdout, "%.2f: %.3f, %.3f\n", progressRatio, deltaScore, probability);
+
+            if(ret.size() > path.size() || force_next){
+                ret = path;
+            } else {
+                for(int i = CNT-1; i >= 0; i--){
+                    swap(indices[idx0[i]], indices[idx1[i]]);
+                }
+            }
         }
-        //break;
     }
-    //printf("%d\n", t);
+    fprintf(stderr, "Iteration: %lld\n", cnt);
     return ret;
 }
 
-int main(){
-    double start = clock();
+int main(int argc, char* argv[]){
+    double startTemp = 10.0;
+    double endTemp = 1.0;
+    if(argc == 3){
+        startTemp = stoi(argv[1]);
+        endTemp = stoi(argv[2]);
+    }
+
+    const auto startTime = system_clock::now();
     cin >> N >> si >> sj;
     REP(i,N){
         string s;
@@ -392,23 +414,7 @@ int main(){
     make_e2v();
     calc_vers_dist();
 
-    /// 205026
-    //const int iteration = 1000;
-    /// 202522
-
-    const int iteration = 10000;
-    const double startTemp = 100;
-    const double endTemp = 10;
-    string answer = heuristic_path_delete(TIME/2, start, iteration, startTemp, endTemp);
-
-    {
-        const int iteration = 1000;
-        const double startTemp = 10;
-        const double endTemp = 1;
-        string tmp = heuristic_path_delete(TIME, start, iteration, startTemp, endTemp);
-        if(answer.size() > tmp.size())
-            answer = tmp;
-    }
+    string answer = heuristic_path_delete(TIME, startTime, startTemp, endTemp);
 
     cout << answer << endl;
     return 0;

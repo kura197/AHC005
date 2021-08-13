@@ -4,7 +4,7 @@ OUTPUT = answer
 
 TESTER = ./test.sh
 VIS = tools/target/release/vis
-TEST_IN = tools/in/0085.txt
+TEST_IN = tools/in/0065.txt
 
 TEST_OUT = result.txt
 
@@ -12,9 +12,9 @@ TEST_SHELL = ./test.sh
 TEST_PY = ./test.py
 
 CXX = g++-7
-#CFLAGS = --std=c++17 -Wall -O3
-CFLAGS = --std=c++17 -g -fsanitize=address -Wall
-#CFLAGS = --std=c++17 -g -fsanitize=address -Wall -p
+CFLAGS = --std=c++17 -Wall -O3
+#CFLAGS = --std=c++17 -g -fsanitize=address -Wall
+#CFLAGS = --std=c++17 -g -fsanitize=address -Wall -p -O3
 
 .PHONY: test
 test: $(OUTPUT)
@@ -32,6 +32,10 @@ svg: $(OUTPUT)
 
 $(OUTPUT): $(INPUT)
 	$(CXX) $< -o $@ $(CFLAGS)
+
+.PHONY: prof
+prof: $(OUTPUT) gmon.out
+	gprof $(OUTPUT) gmon.out
 
 .PHONY: clean
 clean:

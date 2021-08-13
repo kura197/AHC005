@@ -4,3 +4,4 @@ tools
 answer
 *.txt
 other_ans
+gmon.out
