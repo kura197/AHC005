@@ -74,12 +74,13 @@ def get_score(debug=False, args=[]):
             print('test {:02} : {}'.format(t, score))
         total += score
 
+    ave_score = total // len(TEST)
     if debug:
         print()
         print(f'total score : {total}.')
-        print(f'average score : {total // len(TEST)}.')
-    else:
-        print(f'{total // len(TEST)}')
+        print(f'average score : {ave_score}.')
+
+    return ave_score
 
 if __name__ == '__main__':
     #get_score(debug=True, args=[50.0, 1.0])
