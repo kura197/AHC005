@@ -19,7 +19,7 @@ const double EPS = 1e-10;
 const int SEED = 1000;
 
 const double TIME = 2.85;
-//const double TIME = 20;
+//const double TIME = 30;
 
 int N, si, sj;
 vector<string> C;
@@ -277,24 +277,29 @@ string traverse(vector<ll>& indices){
         auto nex_path = VP[v][nv];
             
         auto [y, x] = vers[v];
+        int idx = 0;
         for(auto& c : nex_path){                
-            if(RE[y][x] != -1){
-                for(auto& vv : local_E2V[RE[y][x]]){
-                    rem_edges[vv] &= 0b01;
+            if(idx % 2 == 0){
+                if(RE[y][x] != -1){
+                    for(auto& vv : local_E2V[RE[y][x]]){
+                        rem_edges[vv] &= 0b01;
+                    }
+                    local_E2V[RE[y][x]].clear();
                 }
-                local_E2V[RE[y][x]].clear();
-            }
-            if(CE[y][x] != -1){
-                for(auto& vv : local_E2V[CE[y][x]]){
-                    rem_edges[vv] &= 0b10;
+                if(CE[y][x] != -1){
+                    for(auto& vv : local_E2V[CE[y][x]]){
+                        rem_edges[vv] &= 0b10;
+                    }
+                    local_E2V[CE[y][x]].clear();
                 }
-                local_E2V[CE[y][x]].clear();
             }
 
             if(c == 'U') y--;
             else if(c == 'D') y++;
             else if(c == 'R') x++;
             else if(c == 'L') x--;
+
+            //idx++;
         }
 
         //auto [ny, nx] = vers[nv];
@@ -331,7 +336,9 @@ string heuristic_path_delete(const double endTime, const auto startTime, const d
 
     vector<ll> indices(sz-1);
     REP(i,sz-1) indices[i] = i+1;
+    shuffle(indices.begin(), indices.end(), engine);
     string ret = traverse(indices);
+    string tmp = ret;
     ll cnt = 0;
     while(1){
         cnt++;
@@ -339,51 +346,55 @@ string heuristic_path_delete(const double endTime, const auto startTime, const d
         if(time > endTime)
             break;
 
-        if(rand01() < 0.05){
+        if(rand01() < 0.01){
             reverse(indices.begin(), indices.end());
             string path = traverse(indices);
 
             const double progressRatio = time / endTime;
             const double temp = startTemp + (endTemp - startTemp) * progressRatio;
-            const double deltaScore = (int)ret.size() - (int)path.size() + EPS;
+            const double deltaScore = (int)tmp.size() - (int)path.size() + EPS;
             const double probability = exp(deltaScore / temp);
             const bool force_next = probability > (double)(randxor() % 100000) / 100000;
-            if(ret.size() > path.size() || force_next){
-                ret = path;
+            if(tmp.size() > path.size() || force_next){
+                tmp = path;
+                if(ret.size() > tmp.size())
+                    ret = tmp;
             } else {
                 reverse(indices.begin(), indices.end());
             }
         } else {
-            //// 2-opt
+            //// 2-opt got worse results.
+            //// exchange vertices
             static uniform_int_distribution<> rand(0, sz-2);
             static uniform_int_distribution<> rand2(1, 5);
-            const int CNT = rand2(engine);
-            //const int CNT = 1;
-            vector<int> idx0(CNT, -1), idx1(CNT, -1);
-            for(int i = 0; i < CNT; i++){
-                while(idx0[i] == idx1[i]){
-                    idx0[i] = rand(engine);
-                    idx1[i] = rand(engine);
-                }
-                swap(indices[idx0[i]], indices[idx1[i]]);
+            int idx0 = -1, idx1 = -1;
+            while(idx0 == idx1){
+                idx0 = rand(engine);
+                idx1 = rand(engine);
             }
+            swap(indices[idx0], indices[idx1]);
+            //if(idx0 > idx1) swap(idx0, idx1);
+            //reverse(indices.begin() + idx0, indices.begin() + idx1);
 
             string path = traverse(indices);
 
             const double progressRatio = time / endTime;
             const double temp = startTemp + (endTemp - startTemp) * progressRatio;
-            const double deltaScore = (int)ret.size() - (int)path.size() + EPS;
+            const double deltaScore = (int)tmp.size() - (int)path.size() + EPS;
             const double probability = exp(deltaScore / temp);
             const bool force_next = probability > (double)(randxor() % 100000) / 100000;
             ///fprintf(stdout, "%.2f, %.2f, %.2f: %.3f, %.3f, %.3f\n", time, endTime, progressRatio, deltaScore, temp, probability);
             //fprintf(stdout, "%.2f: %.3f, %.3f\n", progressRatio, deltaScore, probability);
 
-            if(ret.size() > path.size() || force_next){
-                ret = path;
-            } else {
-                for(int i = CNT-1; i >= 0; i--){
-                    swap(indices[idx0[i]], indices[idx1[i]]);
+            if(tmp.size() > path.size() || force_next){
+                tmp = path;
+                if(ret.size() > tmp.size()){
+                    fprintf(stderr, "%.2f: %d\n", progressRatio, (int)tmp.size());
+                    ret = tmp;
                 }
+            } else {
+                swap(indices[idx0], indices[idx1]);
+                //reverse(indices.begin() + idx0, indices.begin() + idx1);
             }
         }
     }
@@ -392,8 +403,8 @@ string heuristic_path_delete(const double endTime, const auto startTime, const d
 }
 
 int main(int argc, char* argv[]){
-    double startTemp = 10.0;
-    double endTemp = 1.0;
+    double startTemp = 35.0;
+    double endTemp = 0.5;
     if(argc == 3){
         startTemp = stoi(argv[1]);
         endTemp = stoi(argv[2]);
@@ -414,7 +425,13 @@ int main(int argc, char* argv[]){
     make_e2v();
     calc_vers_dist();
 
-    string answer = heuristic_path_delete(TIME, startTime, startTemp, endTemp);
+    const int NSTART = 1;
+    string answer(10000, 'U');
+    for(int i = 0; i < NSTART; i++){
+        string tmp = heuristic_path_delete(TIME * (i+1) / NSTART, startTime, startTemp, endTemp);
+        if(tmp.size() < answer.size())
+            answer = tmp;
+    }
 
     cout << answer << endl;
     return 0;

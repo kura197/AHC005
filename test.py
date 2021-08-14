@@ -1,12 +1,12 @@
 import os
 import subprocess, sys
+import multiprocessing as mp
 import re
 import pdb
 
-#TESTER = '/home/kura/Documents/atcoder/AHC004/tools/target/release/vis'
-TESTER = '/home/kura/Documents/atcoder/AHC005/test.sh'
-TEST_DIR = '/home/kura/Documents/atcoder/AHC005/tools/in'
-ANSWER = '/home/kura/Documents/atcoder/AHC005/answer'
+TESTER = './tools/target/release/vis'
+TEST_DIR = './tools/in'
+ANSWER = './answer'
 
 #TEST = [0]
 #TEST = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
@@ -18,48 +18,69 @@ TEST = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90
 
 MAX_P = 10
 
-def run_process(test_num):
-    cmd = TESTER 
-    arg1 = os.path.join(TEST_DIR, '{:04}.txt'.format(test_num))
-    arg2 = ANSWER
-    arg3 = str(test_num)
-    #print(cmd + ' ' + arg1 + ' ' + arg2 + ' ' + arg3)
-    #proc = subprocess.Popen([cmd, arg1, arg2, arg3], encoding='utf-8', stderr=subprocess.PIPE, stdout=subprocess.DEVNULL)
-    proc = subprocess.Popen([cmd, arg1, arg2, arg3], encoding='utf-8', stderr=subprocess.DEVNULL, stdout=subprocess.PIPE)
-    return proc
 
-def proc_wait(proc):
-    proc.wait()
+def run_test(queue, input_file, tmp_file, args):
+    cmd = [ANSWER]
+    for arg in args:
+        cmd.append(str(arg))
+    #print(cmd)
+
+    with open(input_file, 'r') as ifp:
+        with open(tmp_file, 'w') as ofp:
+            proc = subprocess.run(cmd, encoding='utf-8', stdin=ifp, stderr=subprocess.DEVNULL, stdout=ofp)
     if proc.returncode != 0:
-        print('cmd failed.', file=sys.stderr)
+        print(f'{ANSWER} failed.', file=sys.stderr)
         sys.exit(1)
-    #print(proc.communicate()[1])
-    ret = proc.communicate()
-    score = int(re.sub(r"\D", "", ret[0]))
+
+    proc = subprocess.run([TESTER, input_file, tmp_file], encoding='utf-8', stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    if proc.returncode != 0:
+        print(f'{TESTER} failed.', file=sys.stderr)
+        sys.exit(1)
+
+    score = int(re.sub(r"\D", "", proc.stdout))
+    queue.put(score)
+
+def run_process(test_num, args):
+    input_file = os.path.join(TEST_DIR, '{:04}.txt'.format(test_num))
+    tmp_file = f'./out/{test_num}.txt'
+
+    queue = mp.Queue()
+    proc = mp.Process(target=run_test, args=(queue, input_file, tmp_file, args))
+    proc.start()
+    return proc, queue
+
+def proc_wait(proc, queue):
+    proc.join()
+    score = queue.get()
     return score
 
-def main():
+def get_score(debug=False, args=[]):
     total = 0
     proc_list = []
 
     for t in TEST:
-        proc = run_process(t)
-        proc_list.append((t, proc))
+        proc, queue = run_process(t, args)
+        proc_list.append((t, proc, queue))
         if len(proc_list) == MAX_P:
-            t, proc = proc_list.pop(0)
-            score = proc_wait(proc)
-            print('test {:02} : {}'.format(t, score))
+            t, proc, queue = proc_list.pop(0)
+            score = proc_wait(proc, queue)
+            if debug:
+                print('test {:02} : {}'.format(t, score))
             total += score
 
-    for t, proc in proc_list:
-        score = proc_wait(proc)
-        print('test {:02} : {}'.format(t, score))
+    for t, proc, queue, in proc_list:
+        score = proc_wait(proc, queue)
+        if debug:
+            print('test {:02} : {}'.format(t, score))
         total += score
 
-    print()
-    print(f'total score : {total}.')
-    #print(f'expected score : {total // len(TEST) * 100}.')
-    print(f'average score : {total // len(TEST)}.')
+    if debug:
+        print()
+        print(f'total score : {total}.')
+        print(f'average score : {total // len(TEST)}.')
+    else:
+        print(f'{total // len(TEST)}')
 
 if __name__ == '__main__':
-    main()
+    #get_score(debug=True, args=[50.0, 1.0])
+    get_score(debug=True)
