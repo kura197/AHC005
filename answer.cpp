@@ -264,9 +264,10 @@ string naive_path_delete(){
 }
 
 /// indicesにしたがって移動
-string traverse(vector<ll>& indices){
+pair<string, ll> traverse(vector<ll>& indices){
     int sz = vers.size();
     string path;
+    ll dist = 0;
 
     vector<ll> rem_edges(sz, 3);
     int v = 0;
@@ -275,6 +276,7 @@ string traverse(vector<ll>& indices){
         int nv = indices[i];
         if(rem_edges[nv] == 0) continue;
         auto nex_path = VP[v][nv];
+        dist += VD[v][nv];
             
         auto [y, x] = vers[v];
         int idx = 0;
@@ -310,7 +312,8 @@ string traverse(vector<ll>& indices){
         path += nex_path;
     }
     path += VP[v][0];
-    return path;
+    dist += VD[v][0];
+    return make_pair(path, dist);
 }
 
 /// xor128
@@ -337,8 +340,9 @@ string heuristic_path_delete(const double endTime, const auto startTime, const d
     vector<ll> indices(sz-1);
     REP(i,sz-1) indices[i] = i+1;
     shuffle(indices.begin(), indices.end(), engine);
-    string ret = traverse(indices);
-    string tmp = ret;
+    auto [cur_path, cur_dist] = traverse(indices);
+    auto min_dist = cur_dist;
+    auto min_path = cur_path;
     ll cnt = 0;
     while(1){
         cnt++;
@@ -348,17 +352,20 @@ string heuristic_path_delete(const double endTime, const auto startTime, const d
 
         if(rand01() < 0.01){
             reverse(indices.begin(), indices.end());
-            string path = traverse(indices);
+            auto [path, dist] = traverse(indices);
 
             const double progressRatio = time / endTime;
             const double temp = startTemp + (endTemp - startTemp) * progressRatio;
-            const double deltaScore = (int)tmp.size() - (int)path.size() + EPS;
+            const double deltaScore = cur_dist - dist + EPS;
             const double probability = exp(deltaScore / temp);
             const bool force_next = probability > (double)(randxor() % 100000) / 100000;
-            if(tmp.size() > path.size() || force_next){
-                tmp = path;
-                if(ret.size() > tmp.size())
-                    ret = tmp;
+            if(cur_dist > dist || force_next){
+                cur_dist = dist;
+                if(min_dist > cur_dist){
+                    min_dist = cur_dist;
+                    min_path = path;
+                    fprintf(stderr, "%.2f: %lld\n", progressRatio, min_dist);
+                }
             } else {
                 reverse(indices.begin(), indices.end());
             }
@@ -376,21 +383,23 @@ string heuristic_path_delete(const double endTime, const auto startTime, const d
             //if(idx0 > idx1) swap(idx0, idx1);
             //reverse(indices.begin() + idx0, indices.begin() + idx1);
 
-            string path = traverse(indices);
+            auto [path, dist] = traverse(indices);
 
             const double progressRatio = time / endTime;
             const double temp = startTemp + (endTemp - startTemp) * progressRatio;
-            const double deltaScore = (int)tmp.size() - (int)path.size() + EPS;
+            //const double deltaScore = (int)tmp.size() - (int)path.size() + EPS;
+            const double deltaScore = cur_dist - dist + EPS;
             const double probability = exp(deltaScore / temp);
             const bool force_next = probability > (double)(randxor() % 100000) / 100000;
             ///fprintf(stdout, "%.2f, %.2f, %.2f: %.3f, %.3f, %.3f\n", time, endTime, progressRatio, deltaScore, temp, probability);
             //fprintf(stdout, "%.2f: %.3f, %.3f\n", progressRatio, deltaScore, probability);
 
-            if(tmp.size() > path.size() || force_next){
-                tmp = path;
-                if(ret.size() > tmp.size()){
-                    fprintf(stderr, "%.2f: %d\n", progressRatio, (int)tmp.size());
-                    ret = tmp;
+            if(cur_dist > dist || force_next){
+                cur_dist = dist;
+                if(min_dist > cur_dist){
+                    min_dist = cur_dist;
+                    min_path = path;
+                    fprintf(stderr, "%.2f: %lld\n", progressRatio, min_dist);
                 }
             } else {
                 swap(indices[idx0], indices[idx1]);
@@ -399,12 +408,12 @@ string heuristic_path_delete(const double endTime, const auto startTime, const d
         }
     }
     fprintf(stderr, "Iteration: %lld\n", cnt);
-    return ret;
+    return min_path;
 }
 
 int main(int argc, char* argv[]){
-    double startTemp = 35.0;
-    double endTemp = 0.5;
+    double startTemp = 50.0;
+    double endTemp = 1.0;
     if(argc == 3){
         startTemp = stoi(argv[1]);
         endTemp = stoi(argv[2]);
