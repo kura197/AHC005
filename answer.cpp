@@ -330,15 +330,77 @@ double rand01(){
     return (randxor() + 0.5) * (1.0 / UINT_MAX);
 }
 
+/// return [left, right)
+int myrand(const int left, const int right){
+    static uniform_int_distribution<> rand(0, INT_MAX);
+    int ret = rand(engine);
+    assert(right - left > 0);
+    ret %= right - left;
+    ret += left;
+    return ret;
+}
+
+string get_path(vector<ll>& indices){
+    string path;
+    int v = 0;
+    for(auto& nv : indices){
+        auto nex_path = VP[v][nv];
+        path += nex_path;
+        v = nv;
+    }
+    path += VP[v][0];
+    return path;
+}
+
+ll calc_score(vector<ll>& indices){
+    ll score = 0;
+    int v = 0;
+    for(auto& nv : indices){
+        score += VD[v][nv];
+        v = nv;
+    }
+    score += VD[v][0];
+    return score;
+}
+
+unordered_set<int> calc_ncross(vector<ll>& indices){
+    unordered_set<int> crossed;
+    int v = 0;
+    for(auto& nv : indices){
+        auto [y, x] = vers[v];
+        //assert(CE[y][x] != -1);
+        //assert(RE[y][x] != -1);
+        //if(CE[y][x] == -1 || RE[y][x] == -1){
+        //    printf("Error\n");
+        //}
+        if(RE[y][x] != -1)
+            for (auto &vv : E2V[RE[y][x]]){
+                crossed.insert(vv);
+            }
+        if(CE[y][x] != -1)
+            for (auto &vv : E2V[CE[y][x]]){
+                crossed.insert(vv);
+            }
+        v = nv;
+    }
+    return crossed;
+}
+
+
 //// heuristic 2-opt, ...
 string heuristic_path_delete(const double endTime, const auto startTime, const double startTemp, const double endTemp){
-    int sz = vers.size();
+    int ncross = vers.size();
 
-    vector<ll> indices(sz-1);
-    REP(i,sz-1) indices[i] = i+1;
+    //// [1, ..., ncross-1]
+    //vector<ll> indices((ncross-1)/2);
+    //REP(i,(ncross-1)/2) indices[i] = i+1;
+    vector<ll> indices{1, 2, 3};
     shuffle(indices.begin(), indices.end(), engine);
-    string ret = traverse(indices);
-    string tmp = ret;
+
+    const double penalty = 1000.0;
+
+    auto crossed = calc_ncross(indices);
+    double min_score = calc_score(indices) + (ncross - crossed.size()) * penalty;
     ll cnt = 0;
     while(1){
         cnt++;
@@ -346,65 +408,131 @@ string heuristic_path_delete(const double endTime, const auto startTime, const d
         if(time > endTime)
             break;
 
-        if(rand01() < 0.01){
-            reverse(indices.begin(), indices.end());
-            string path = traverse(indices);
+        function restore = [](){};
+        double score;
 
-            const double progressRatio = time / endTime;
-            const double temp = startTemp + (endTemp - startTemp) * progressRatio;
-            const double deltaScore = (int)tmp.size() - (int)path.size() + EPS;
-            const double probability = exp(deltaScore / temp);
-            const bool force_next = probability > (double)(randxor() % 100000) / 100000;
-            if(tmp.size() > path.size() || force_next){
-                tmp = path;
-                if(ret.size() > tmp.size())
-                    ret = tmp;
-            } else {
-                reverse(indices.begin(), indices.end());
-            }
-        } else {
-            //// 2-opt got worse results.
-            //// exchange vertices
-            static uniform_int_distribution<> rand(0, sz-2);
-            static uniform_int_distribution<> rand2(1, 5);
-            int idx0 = -1, idx1 = -1;
-            while(idx0 == idx1){
-                idx0 = rand(engine);
-                idx1 = rand(engine);
-            }
-            swap(indices[idx0], indices[idx1]);
-            //if(idx0 > idx1) swap(idx0, idx1);
-            //reverse(indices.begin() + idx0, indices.begin() + idx1);
+        //fprintf(stderr, "%d: %d\n", cnt, indices.size());
+        auto prob = rand01();
+        if (prob < 0.4) {
+            /// insert
+            //uniform_int_distribution<> rand(1, ncross-1);
+            //int idx = rand(engine);
+            int idx = myrand(1, ncross);
 
-            string path = traverse(indices);
-
-            const double progressRatio = time / endTime;
-            const double temp = startTemp + (endTemp - startTemp) * progressRatio;
-            const double deltaScore = (int)tmp.size() - (int)path.size() + EPS;
-            const double probability = exp(deltaScore / temp);
-            const bool force_next = probability > (double)(randxor() % 100000) / 100000;
-            ///fprintf(stdout, "%.2f, %.2f, %.2f: %.3f, %.3f, %.3f\n", time, endTime, progressRatio, deltaScore, temp, probability);
-            //fprintf(stdout, "%.2f: %.3f, %.3f\n", progressRatio, deltaScore, probability);
-
-            if(tmp.size() > path.size() || force_next){
-                tmp = path;
-                if(ret.size() > tmp.size()){
-                    fprintf(stderr, "%.2f: %d\n", progressRatio, (int)tmp.size());
-                    ret = tmp;
+            ///TODO
+            bool contain = false;
+            for(auto& x : indices){
+                if(idx == x) {
+                    contain = true;
+                    break;
                 }
-            } else {
-                swap(indices[idx0], indices[idx1]);
-                //reverse(indices.begin() + idx0, indices.begin() + idx1);
             }
+            if(contain) continue;
+
+            fprintf(stderr, "insert %d, size=%d\n", idx, indices.size());
+
+            indices.push_back(idx);
+            restore = [&indices]() { indices.pop_back(); };
+
+            crossed = calc_ncross(indices);
+            score = calc_score(indices) + (ncross - crossed.size()) * penalty;
+            fprintf(stderr, "score=%f (%lld, %f)\n", score, calc_score(indices), (ncross - crossed.size()) * penalty);
+        } else if(prob < 0.0){
+            /// remove
+            //uniform_int_distribution<> rand(0, indices.size()-1);
+            //int idx = rand(engine);
+            int idx = myrand(0, indices.size());
+
+            fprintf(stderr, "remove %d, size=%d\n", idx, indices.size());
+
+            auto pos = indices[idx];
+            indices.erase(indices.begin() + idx);
+            restore = [&indices, idx, pos]() { indices.insert(indices.begin() + idx, pos); };
+
+            crossed = calc_ncross(indices);
+            //score = calc_score(indices) + (ncross - crossed.size()) * 10.0;
+            score = calc_score(indices) + (ncross - crossed.size()) * penalty;
+        } else {
+            /// 2-swap
+            //uniform_int_distribution<> rand(0, indices.size() - 1);
+            //int idx0 = rand(engine);
+            //int idx1 = rand(engine);
+            int idx0 = myrand(0, indices.size());
+            int idx1 = myrand(0, indices.size());
+            if (idx0 == idx1) continue;
+            if (idx0 > idx1) swap(idx0, idx1);
+
+            int p0, pre_p0, post_p0;
+            int p1, pre_p1, post_p1;
+
+            score = min_score;
+            if (idx0 == 0) {
+                p0 = indices[idx0];
+                pre_p0 = 0;
+                post_p0 = indices[idx0 + 1];
+            } else {
+                p0 = indices[idx0];
+                pre_p0 = indices[idx0 - 1];
+                post_p0 = indices[idx0 + 1];
+            }
+
+            if (idx1 == (int)indices.size() - 1) {
+                p1 = indices[idx1];
+                pre_p1 = indices[idx1 - 1];
+                post_p1 = 0;
+            } else {
+                p1 = indices[idx1];
+                pre_p1 = indices[idx1 - 1];
+                post_p1 = indices[idx1 + 1];
+            }
+
+            // TODO
+            // score -= VD[pre_p0][p0] + VD[p0][post_p0];
+            // score -= VD[pre_p1][p1] + VD[p1][post_p1];
+            // score += VD[pre_p0][p1] + VD[p1][post_p0];
+            // score += VD[pre_p1][p0] + VD[p0][post_p1];
+
+            swap(indices[idx0], indices[idx1]);
+            restore = [&indices, idx0, idx1]() { swap(indices[idx0], indices[idx1]); };
+
+            crossed = calc_ncross(indices);
+            score = calc_score(indices) + (ncross - crossed.size()) * penalty;
+        }
+
+        const double progressRatio = time / endTime;
+        const double temp = startTemp + (endTemp - startTemp) * progressRatio;
+        const double deltaScore = -1.0 * (score - min_score) + EPS;
+        const double probability = exp(deltaScore / temp);
+        const bool force_next = probability > (double)(randxor() % 100000) / 100000;
+        ///fprintf(stdout, "%.2f, %.2f, %.2f: %.3f, %.3f, %.3f\n", time, endTime, progressRatio, deltaScore, temp, probability);
+        if(cnt % 5000 == 0)
+            fprintf(stderr, "%.2f: %.3f, %.3f\n", progressRatio, deltaScore, probability);
+
+        if(min_score > score || force_next){
+        //if(min_score > score){
+            min_score = score;
+            //tmp = path;
+            //if(ret.size() > tmp.size()){
+            //    fprintf(stderr, "%.2f: %d\n", progressRatio, (int)tmp.size());
+            //    ret = tmp;
+            //}
+        } else {
+            restore();
+            //swap(indices[idx0], indices[idx1]);
+            //reverse(indices.begin() + idx0, indices.begin() + idx1);
         }
     }
+
     fprintf(stderr, "Iteration: %lld\n", cnt);
-    return ret;
+    //return ret;
+    return get_path(indices);
 }
 
 int main(int argc, char* argv[]){
-    double startTemp = 35.0;
-    double endTemp = 0.5;
+    //double startTemp = 5.996794213525072;
+    //double endTemp = 1.4780189300526465;
+    double startTemp = 100;
+    double endTemp = 1.0;
     if(argc == 3){
         startTemp = stoi(argv[1]);
         endTemp = stoi(argv[2]);
